@@ -1,0 +1,87 @@
+// This file is part of nand2tetris, as taught in The Hebrew University, and
+// was written by Aviv Yaish. It is an extension to the specifications given
+// [here](https://www.nand2tetris.org) (Shimon Schocken and Noam Nisan, 2017),
+// as allowed by the Creative Common Attribution-NonCommercial-ShareAlike 3.0
+// Unported [License](https://creativecommons.org/licenses/by-nc-sa/3.0/).
+
+
+// The ExtendAlu chip is an extension of the standard ALU which also supports
+// shift operations.
+// The inputs of the extended ALU are instruction[9], x[16], y[16].
+// The "ng" and "zr" output pins behave the same as in the regular ALU.
+// The "out" output is defined as follows:
+// If instruction[8]=1 and instruction[7]=1 the output is identical to the 
+// regular ALU, where:
+// instruction[5]=zx, instruction[4]=nx, ..., instruction[0]=no
+// Else, if instruction[8]=0 and instruction[7]=1, the output is a shift:
+// - If instruction[4] == 0, the input "y" will be shifted, otherwise "x".
+// - If instruction[5] == 0, the shift will be a right-shift, otherwise left.
+// - All other inputs are undefined.
+/*
+map my alu to  current setting:
+zx - instruction[5]
+nx - 4
+zy - 3
+ny -2
+f - 1
+no - 0
+*/
+CHIP ExtendAlu {
+     IN x[16], y[16], instruction[9];
+     OUT out[16], zr, ng;
+     
+     PARTS:
+	 
+	// calc shift, will select result using max at end
+	//mux x or y:
+	Mux16(a=y, b=x, sel=instruction[4], out=shiftIn);
+	//shift left and right, choose with mux
+	ShiftRight(in=shiftIn, out=rightShift);
+	ShiftLeft(in=shiftIn, out=leftShift);
+	Mux16(a=rightShift, b=leftShift, sel=instruction[5], out=shiftRes);
+	
+	 
+	//My ALU:
+	// deal with x input: first zero (a mux), then neg and mux
+    Mux16(a=x, b=false, sel=instruction[5], out=xZeroed); 
+    Not16(in=xZeroed, out=xNot);
+    Mux16(a=xZeroed, b=xNot, sel=instruction[4], out=xProcessed);
+
+    // deal with y input: same as above
+    Mux16(a=y, b=false, sel=instruction[3], out=yZeroed); 
+    Not16(in=yZeroed, out=yNot);  
+    Mux16(a=yZeroed, b=yNot, sel=instruction[2], out=yProcessed); 
+ 
+    // select function: compute both, then mux
+    And16(a=xProcessed, b=yProcessed, out=andXY);  
+    Add16(a=xProcessed, b=yProcessed, out=addXY);    
+    Mux16(a=andXY, b=addXY, sel=instruction[1], out=fRes); 
+   
+    // split fRes for zr and ng
+    Not16(in=fRes, out=fResNot);
+	// select zeroed or non zeroed output
+    Mux16(a=fRes, b=fResNot, sel=instruction[0], out=aluOut);
+
+	//calc zr and ng
+	
+
+
+
+
+
+    //zr: check any bit > 0. use or8 to reduce to 1 bit
+    Or8Way(in=resLow, out=fResOr1);
+    Or8Way(in=resHigh, out=fResOr2);
+    Or(a=fResOr1, b=fResOr2, out=allZero);
+    Not(in=allZero, out=zr);
+    
+    // if (out < 0) set ng = 1
+    // if the MSB is 1 then it is negative
+    Or(a=outMSB, b=false, out=ng);
+	
+	//select normal ALU or shift
+	//output normal alu iff instruction 7&8 are 1:
+	//and pipe out to ng and zr check by splitting pins
+	And(a=instruction[7], b=instruction[8], out=useAluOut);
+	Mux16(a=shiftRes, b=aluOut, sel=useAluOut, out=out, out[0..7]=resLow, out[8..15]=resHigh, out[15]=outMSB);
+}

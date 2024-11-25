@@ -1,0 +1,91 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/5/CPU.hdl
+/**
+ * The Hack Central Processing unit (CPU).
+ * Parses the binary code in the instruction input and executes it according to the
+ * Hack machine language specification. In the case of a C-instruction, computes the
+ * function specified by the instruction. If the instruction specifies to read a memory
+ * value, the inM input is expected to contain this value. If the instruction specifies
+ * to write a value to the memory, sets the outM output to this value, sets the addressM
+ * output to the target address, and asserts the writeM output (when writeM = 0, any
+ * value may appear in outM).
+ * If the reset input is 0, computes the address of the next instruction and sets the
+ * pc output to that value. If the reset input is 1, sets pc to 0.
+ * Note: The outM and writeM outputs are combinational: they are affected by the
+ * instruction's execution during the current cycle. The addressM and pc outputs are
+ * clocked: although they are affected by the instruction's execution, they commit to
+ * their new values only in the next cycle.
+ * devide and conquer:
+D: input from ALU. out: only ALU. load from C instruction
+A: input: from instruction or alu (a mux). output: ALU, addressM (where to write) or PC, load from
+1. Mux for first bit: what to pass to A register. input: ALU or instruction. sel is MSB
+2. mux into alu: D register is Y, so select M or A as x. load is inst[12]
+3. PC: ?
+ALU: X (m or A form muyx), Y from D, instruction from c instruction, 
+aluOut: write to mem (outM), pass to A and D, and control PC with ZR and NG
+
+
+ */
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+	// D reg: check load of D reg: c instruction & D bit
+    And(a=instruction[15], b=instruction[4], out=dRegLoad);
+    DRegister(in=aluOut, load=dRegLoad , out= dRegOut);
+    //A reg:
+    //aRegMux: select instruction or alu out. load instruction of inst[15] is 0
+    Mux16(a=instruction, b=aluOut , sel=instruction[15] , out=aRegMux);
+    //load if A instruction (inst[15] is 0), or save A (inst[5])
+    Not(in=instruction[15], out= IsA);
+    Or(a=IsA, b=instruction[5], out=aRegLoad);
+    ARegister(in=aRegMux, load=aRegLoad, out=aRegOut, out[0..14]=addressM);
+
+    //ALU
+    //mux: input A or M 0 or 1 in inst[12] respectively
+    Mux16(a=aRegOut, b=inM, sel=instruction[12], out=aluMux);
+    //ALU:
+    ALU(x=dRegOut, y=aluMux,
+    zx= instruction[11],
+    nx= instruction[10],
+    zy= instruction[9],
+    ny= instruction[8],
+    f= instruction[7],
+    no= instruction[6],
+    out= aluOut, out=outM,
+    zr=aluZr, ng=aluNg);
+    
+    //write M: easy: if the M bit in d bits of a C inst:
+    And(a=instruction[15], b=instruction[3], out= writeM);
+
+    //PC: by default increment. reset if passed as input. 
+    //should jump: using ALU flags and C instruction
+    // we know if ALU out is neg or zero from AluZr and AluNg
+    //we check if pos if neither negative nor zero
+    Or(a=aluZr, b=aluNg , out=zrOrNg);
+    Not(in=zrOrNg, out=aluPos);
+    //use and gates to check each possibilty:
+    And(a=aluPos, b=instruction[0], out=jumpIfPos);
+    And(a=aluZr, b=instruction[1], out=jumpIfZr); // zr: out == 0
+    And(a=aluNg, b=instruction[2], out=jumpIfNg); // ng: out < 0
+    // check if any were true: use 3 bits of Or*way
+    Or8Way(in[0]= jumpIfPos,in[1]= jumpIfZr,in[2]= jumpIfNg, in[3..7]=false, out=couldJump);
+    //jump if C instruction:
+    And(a= instruction[15], b= couldJump, out= willJump);
+    PC(in=aRegOut, load=willJump, inc= true, reset=reset, out[0..14]=pc);
+    
+
+
+}

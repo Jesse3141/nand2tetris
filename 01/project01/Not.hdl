@@ -1,0 +1,6 @@
+CHIP Not {
+  IN in;
+  OUT out;
+  PARTS: // a Nand with same input
+  Nand(a=in, b=in, out=out);
+}

@@ -1,0 +1,23 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/3/a/Bit.hdl
+/**
+ * 1-bit register:
+ * If load is asserted, the register's value is set to in;
+ * Otherwise, the register maintains its current value:
+ * if (load(t)) out(t+1) = in(t), else out(t+1) = out(t)
+ * wrap a dff with logic to set it based on load, 
+ * by wiring dff out to chip out and mux a
+ */
+CHIP Bit {
+    IN in, load;
+    OUT out;
+
+    PARTS:
+    // wire dff out to register out and to mux.
+    DFF(in=muxOut, out=dffPrev, out=out);
+    // mux selects what to store in dff
+    Mux(a=dffPrev, b=in, sel=load, out=muxOut);
+    
+}
