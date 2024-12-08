@@ -12,6 +12,7 @@ from Parser import Parser
 from CodeWriter import CodeWriter
 
 
+
 def translate_file(
         input_file: typing.TextIO, output_file: typing.TextIO) -> None:
     """Translates a single file.
@@ -24,7 +25,25 @@ def translate_file(
     # It might be good to start with something like:
     # parser = Parser(input_file)
     # code_writer = CodeWriter(output_file)
-    pass
+    # while parser.has_more_commands():
+    # write code and comment the raw vm command, unless empty
+    parser = Parser(input_file)
+    code_writer = CodeWriter(output_file)
+    # Set the file name for static variables
+    code_writer.set_file_name(input_file.name)
+    while parser.has_more_commands():
+        parser.advance()
+        if parser.empty_command: continue
+        command_type = parser.command_type()
+
+        #write the original VM command as a comment in the assembly code
+        output_file.write(f"// {parser.raw}\n")
+
+        if command_type == 'C_ARITHMETIC':
+            code_writer.write_arithmetic(parser.arg1())
+        elif command_type in ('C_PUSH', 'C_POP'):
+            code_writer.write_push_pop(command_type, parser.arg1(), parser.arg2())
+        # For Project 7, you don't need to handle other command types
 
 
 if "__main__" == __name__:
@@ -33,6 +52,8 @@ if "__main__" == __name__:
     # Both are closed automatically when the code finishes running.
     # If the output file does not exist, it is created automatically in the
     # correct path, using the correct filename.
+    # reads vm files, and translates them to assembly
+    # passes the input file stream to traslate_file
     if not len(sys.argv) == 2:
         sys.exit("Invalid usage, please use: VMtranslator <input path>")
     argument_path = os.path.abspath(sys.argv[1])
@@ -53,3 +74,4 @@ if "__main__" == __name__:
                 continue
             with open(input_path, 'r') as input_file:
                 translate_file(input_file, output_file)
+
