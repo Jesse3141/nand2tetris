@@ -11,16 +11,16 @@ import typing
 class Parser:
     """
     # Parser
-    
+
     Handles the parsing of a single .vm file, and encapsulates access to the
-    input code. It reads VM commands, parses them, and provides convenient 
-    access to their components. 
+    input code. It reads VM commands, parses them, and provides convenient
+    access to their components.
     In addition, it removes all white space and comments.
 
     ## VM Language Specification
 
     A .vm file is a stream of characters. If the file represents a
-    valid program, it can be translated into a stream of valid assembly 
+    valid program, it can be translated into a stream of valid assembly
     commands. VM commands may be separated by an arbitrary number of whitespace
     characters and comments, which are ignored. Comments begin with "//" and
     last until the line's end.
@@ -33,7 +33,7 @@ class Parser:
     - Memory segment manipulation:
       - push <segment> <number>
       - pop <segment that is not constant> <number>
-      - <segment> can be any of: argument, local, static, constant, this, that, 
+      - <segment> can be any of: argument, local, static, constant, this, that,
                                  pointer, temp
     - Branching (only relevant for project 8):
       - label <label-name>
@@ -81,7 +81,7 @@ class Parser:
         return False
 
     def advance(self) -> None:
-        """Reads the next command from the input and makes it the current 
+        """Reads the next command from the input and makes it the current
         command. Should be called only if has_more_commands() is true. Initially
         there is no current command.
         """
@@ -118,8 +118,8 @@ class Parser:
     def arg1(self) -> str:
         """
         Returns:
-            str: the first argument of the current command. In case of 
-            "C_ARITHMETIC", the command itself (add, sub, etc.) is returned. 
+            str: the first argument of the current command. In case of
+            "C_ARITHMETIC", the command itself (add, sub, etc.) is returned.
             Should not be called if the current command is "C_RETURN".
         """
         arg1 = None
@@ -134,7 +134,7 @@ class Parser:
         """
         Returns:
             int: the second argument of the current command. Should be
-            called only if the current command is "C_PUSH", "C_POP", 
+            called only if the current command is "C_PUSH", "C_POP",
             "C_FUNCTION" or "C_CALL".
         """
         arg2= self.curr_inst.split()[2]

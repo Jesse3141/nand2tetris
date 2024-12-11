@@ -1,37 +1,30 @@
-"""
-This file is part of nand2tetris, as taught in The Hebrew University, and
-was written by Aviv Yaish. It is an extension to the specifications given
-[here](https://www.nand2tetris.org) (Shimon Schocken and Noam Nisan, 2017),
-as allowed by the Creative Common Attribution-NonCommercial-ShareAlike 3.0
-Unported [License](https://creativecommons.org/licenses/by-nc-sa/3.0/).
-"""
 import typing
 
 TEMP_START = 5
 POINTER_START = 3
 
-
+"""Translates VM commands into Hack assembly code."""
 class CodeWriter:
-    """Translates VM commands into Hack assembly code."""
-
-    def __init__(self, output_stream: typing.TextIO) -> None:
+    def __init__(self, output_stream: typing.TextIO, label_counter = None) -> None:
         """Initializes the CodeWriter.
-
         Args:
             output_stream (typing.TextIO): output stream.
+            counter: a list of one elem:
         """
         # Your code goes here!
         # Note that you can write to output_stream like so:
         # output_stream.write("Hello world! \n")
+        self.label_counter = label_counter
         self.output_stream = output_stream
         self.input_filename = None
         self.l_num = 0
         self.comparison_commands = {"gt": "JGT", "lt": "JLT", "eq": "JEQ"}
+        self.curr_function = ''
 
     def set_file_name(self, filename: str) -> None:
         """Informs the code writer that the translation of a new VM file is
         started.
-
+        I'm adding a saving of the file name without the extension
         Args:
             filename (str): The name of the VM file.
         """
@@ -47,6 +40,7 @@ class CodeWriter:
         # For example, using code similar to:
         # input_filename, input_extension = os.path.splitext(os.path.basename(input_file.name))
         self.input_filename = filename
+
 
     def write_arithmetic(self, command: str) -> None:
         """Writes assembly code that is the translation of the given
@@ -211,25 +205,44 @@ class CodeWriter:
                 self.output_stream.write("@R" + str(base + index) + "\n")
                 self.output_stream.write("M=D\n")
 
-    def write_label(self, label: str) -> None:
+    def create_label(self, label: str) -> str:
+        """Creates a label for the given label name.
+
+        Args:           label (str): the label name.
+        Returns:            str: the label.
+        """
+        full_label = f'{self.input_filename}.{self.curr_function}${label}.{self.label_counter[0]}'
+        self.label_counter[0] += 1
+        return full_label
+
+    def write_label(self, label: str,formatted = False) -> None:
         """Writes assembly code that affects the label command.
         Let "Xxx.foo" be a function within the file Xxx.vm. The handling of
         each "label bar" command within "Xxx.foo" generates and injects the symbol
         "Xxx.foo$bar" into the assembly code stream.
         When translating "goto bar" and "if-goto bar" commands within "foo",
         the label "Xxx.foo$bar" must be used instead of "bar".
-
+        eg, given the commnad
+        label loop_start,
+        writes the required assembly code: (label_name)
+        therefore, if inside a function, need to save it's name to the writer
+        but in this format: filename.function_name$label
+        edge cases:
+        a function that makes tow calls to the smae function.
+        each return must be unqiue.
         Args:
             label (str): the label to write.
         """
-        # This is irrelevant for project 7,
-        # you will implement this in project 8!
-        pass
+        if not formatted:
+            label = self.create_label(label)
+        self.output_stream.write(f'({label})\n')
+
+
+
 
     def write_goto(self, label: str) -> None:
         """Writes assembly code that affects the goto command.
-
-        Args:
+        execute the jump:
             label (str): the label to go to.
         """
         # This is irrelevant for project 7,
@@ -238,7 +251,12 @@ class CodeWriter:
 
     def write_if(self, label: str) -> None:
         """Writes assembly code that affects the if-goto command.
-
+        push argument 0
+        if-goto LOOP_START  // If counter != 0, goto LOOP_START
+        process:
+        load argument 0 into D,
+        load loop address @label
+        then jump if D is not 0, ie JNE
         Args:
             label (str): the label to go to.
         """
@@ -254,6 +272,12 @@ class CodeWriter:
         In the subsequent assembly process, the assembler translates this
         symbol into the physical address where the function code starts.
 
+        note:
+        add the asm code to initalise to 0 the local variables.
+        this will be executed whenever the function is called.
+        part of a larger api which assumes local vairables will be 0.
+        assumption: the function name includes it's file name
+
         Args:
             function_name (str): the name of the function.
             n_vars (int): the number of local variables of the function.
@@ -264,7 +288,13 @@ class CodeWriter:
         # (function_name)       // injects a function entry label into the code
         # repeat n_vars times:  // n_vars = number of local variables
         #   push constant 0     // initializes the local variables to 0
-        pass
+        #update curr function
+        self.curr_function = function_name
+        # create the function name label: filename.function_name
+        self.output_stream.write(f'({function_name})\n')
+        #initialize the local variables to 0
+        for _ in range(n_vars):
+            self.write_push_pop("C_PUSH", "constant", 0)
 
     def write_call(self, function_name: str, n_args: int) -> None:
         """Writes assembly code that affects the call command.
@@ -277,6 +307,10 @@ class CodeWriter:
         code. In the subsequent assembly process, the assembler translates this
         symbol into the physical memory address of the command immediately
         following the "call" command.
+
+        is assumes the last n items on the stack are the n args.
+        the idea is that the function will place the result in arg 0
+        and the code will continue from where it left off by jumping to the label of r
 
         Args:
             function_name (str): the name of the function to call.
@@ -294,7 +328,24 @@ class CodeWriter:
         # LCL = SP              // repositions LCL
         # goto function_name    // transfers control to the callee
         # (return_address)      // injects the return address label into the code
-        pass
+        #create return address label: filename.function_name$ret.i
+        # but the write label adds filename.function_name and the count
+        return_label = self.create_label(f'ret_from_{function_name}')
+        # push the label onto the stack
+        self.write_push_pop("C_PUSH", "constant", return_label)
+        #push LCL, ARG, THIS, THAT
+        self.write_push_pop("C_PUSH", "LCL", 0)
+        self.write_push_pop("C_PUSH", "ARG", 0)
+        self.write_push_pop("C_PUSH", "THIS", 0)
+        self.write_push_pop("C_PUSH", "THAT", 0)
+        #reposition ARG to SP-5-n_args
+        self.output_stream.write("@SP\nD=M\n@5\nD=D-A\n@n_args\nD=D-A\n@ARG\nM=D\n")
+        #reposition LCL to SP
+        self.output_stream.write("@SP\nD=M\n@LCL\nM=D\n")
+        #goto function_name
+        self.write_goto(function_name)
+        # write the label
+        self.write_label(return_label, True)
 
     def write_return(self) -> None:
         """Writes assembly code that affects the return command."""
@@ -310,4 +361,29 @@ class CodeWriter:
         # ARG = *(frame-3)              // restores ARG for the caller
         # LCL = *(frame-4)              // restores LCL for the caller
         # goto return_address           // go to the return address
-        pass
+
+        # i will use R13 to store the return address
+        self.output_stream.write("@LCL\nD=M\n@R13\nM=D\n")
+        #save return add to R14
+        self.output_stream.write("@5\nA=D-A\nD=M\n@R14\nM=D\n")
+        # pop to arg 0
+        self.write_push_pop("C_POP", "argument", 0)
+        # reposition SP
+        self.output_stream.write("@ARG\nD=M+1\n@SP\nM=D\n")
+        # restore THAT, THIS, ARG, LCL
+        self.output_stream.write("@R13\nD=M\n@1\nA=D-A\nD=M\n@THAT\nM=D\n")
+        self.output_stream.write("@R13\nD=M\n@2\nA=D-A\nD=M\n@THIS\nM=D\n")
+        self.output_stream.write("@R13\nD=M\n@3\nA=D-A\nD=M\n@ARG\nM=D\n")
+        self.output_stream.write("@R13\nD=M\n@4\nA=D-A\nD=M\n@LCL\nM=D\n")
+        # goto return address
+        self.output_stream.write("@R14\nA=M\n0;JMP\n")
+
+    def write_init(self):
+        '''
+        set the stack pointer to 256 and call Sys.init
+        '''
+        self.output_stream.write("@256\n")
+        self.output_stream.write("D=A\n")
+        self.output_stream.write("@SP\n")
+        self.output_stream.write("M=D\n")
+        self.write_call("Sys.init", 0)
