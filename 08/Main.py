@@ -8,23 +8,33 @@ Unported [License](https://creativecommons.org/licenses/by-nc-sa/3.0/).
 import os
 import sys
 import typing
-from Parser import Parser
+
 from CodeWriter import CodeWriter
+from Parser import Parser
 
 
 def translate_file(
-        input_file: typing.TextIO, output_file: typing.TextIO,
-        bootstrap: bool) -> None:
+        input_file: typing.TextIO, output_file: typing.TextIO) -> None:
     """Translates a single file.
 
     Args:
         input_file (typing.TextIO): the file to translate.
         output_file (typing.TextIO): writes all output to this file.
-        bootstrap (bool): if this is True, the current file is the 
-            first file we are translating.
     """
     # Your code goes here!
-    pass
+    # It might be good to start with something like:
+    parser = Parser(input_file)
+    code_writer = CodeWriter(output_file)
+    input_filename, _ = os.path.splitext(os.path.basename(input_file.name))
+    code_writer.set_file_name(input_filename)
+    while parser.has_more_commands():
+        parser.advance()
+        curr_command = parser.command_type()
+        if curr_command == "C_ARITHMETIC":
+            arg1 = parser.arg1()
+            code_writer.write_arithmetic(arg1)
+        elif curr_command == "C_POP" or curr_command == "C_PUSH":
+            code_writer.write_push_pop(curr_command, parser.arg1(), parser.arg2())
 
 
 if "__main__" == __name__:
@@ -46,12 +56,10 @@ if "__main__" == __name__:
         files_to_translate = [argument_path]
         output_path, extension = os.path.splitext(argument_path)
     output_path += ".asm"
-    bootstrap = True
     with open(output_path, 'w') as output_file:
         for input_path in files_to_translate:
             filename, extension = os.path.splitext(input_path)
             if extension.lower() != ".vm":
                 continue
             with open(input_path, 'r') as input_file:
-                translate_file(input_file, output_file, bootstrap)
-            bootstrap = False
+                translate_file(input_file, output_file)
